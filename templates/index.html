@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spam Detection</title>
+  <meta name="description" content="AI-powered spam detection tool. Paste any email or message to instantly check if it's spam or legitimate." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="page-wrapper">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🛡️</span>
+        <span class="logo-text">Spam Detection</span>
+      </div>
+    </header>
+
+    <!-- Main -->
+    <main class="main">
+      <div class="card">
+        <p class="card-subtitle">Paste any email or message below and let the AI decide</p>
+
+        <div class="textarea-wrapper">
+          <textarea
+            id="messageInput"
+            class="message-input"
+            placeholder="Type or paste your message here…"
+            rows="6"
+            spellcheck="false"
+          ></textarea>
+          <span class="char-count" id="charCount">0 characters</span>
+        </div>
+
+        <button class="check-btn" id="checkBtn" onclick="analyzeMessage()">
+          <span class="btn-icon">🔍</span>
+          <span class="btn-text">Analyze Message</span>
+        </button>
+
+        <!-- Result -->
+        <div class="result-box" id="resultBox">
+          <div class="result-header">
+            <span class="result-badge" id="resultBadge"></span>
+            <span class="result-label" id="resultLabel"></span>
+          </div>
+          <div class="confidence-row">
+            <span class="conf-text">Confidence</span>
+            <div class="conf-bar-track">
+              <div class="conf-bar-fill" id="confBarFill"></div>
+            </div>
+            <span class="conf-pct" id="confPct"></span>
+          </div>
+          <p class="result-description" id="resultDesc"></p>
+        </div>
+
+        <!-- Error -->
+        <div class="error-box" id="errorBox">
+          <span>⚠️</span>
+          <span id="errorMsg"></span>
+        </div>
+
+        <!-- Loader -->
+        <div class="loader" id="loader">
+          <div class="spinner"></div>
+          <span>Analyzing…</span>
+        </div>
+      </div>
+
+      <!-- Examples -->
+      <div class="examples">
+        <p class="examples-title">Try an example</p>
+        <div class="example-chips">
+          <button class="chip" onclick="loadExample('spam1')">💰 Prize scam</button>
+          <button class="chip" onclick="loadExample('spam2')">📦 Delivery fraud</button>
+          <button class="chip" onclick="loadExample('ham1')">📧 Normal email</button>
+          <button class="chip" onclick="loadExample('ham2')">💬 Friendly text</button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      Powered by SVM · TF-IDF
+    </footer>
+  </div>
+
+  <script>
+    const examples = {
+      spam1: "CONGRATULATIONS! You have been selected as this week's lucky winner. Claim your $1,000,000 prize now. Click the link and enter your bank details immediately. Limited time offer!",
+      spam2: "Your package is on hold due to unpaid customs fee. Pay $2.99 at this link to release your delivery: bit.ly/trackXXX. Act within 24 hours or package returns.",
+      ham1:  "Hi Sarah, just wanted to follow up on the meeting notes from Tuesday. Can you send me the updated project timeline when you get a chance? Thanks!",
+      ham2:  "Hey! Are you free this weekend? We're thinking of going to that new restaurant downtown. Let me know if you want to join us."
+    };
+
+    const input = document.getElementById("messageInput");
+    const charCount = document.getElementById("charCount");
+
+    input.addEventListener("input", () => {
+      const n = input.value.length;
+      charCount.textContent = `${n} character${n !== 1 ? "s" : ""}`;
+    });
+
+    function loadExample(key) {
+      input.value = examples[key];
+      input.dispatchEvent(new Event("input"));
+      input.focus();
+      hide("resultBox");
+      hide("errorBox");
+    }
+
+    async function analyzeMessage() {
+      const message = input.value.trim();
+      if (!message) {
+        showError("Please enter a message to analyze.");
+        return;
+      }
+
+      hide("resultBox");
+      hide("errorBox");
+      show("loader");
+      setLoading(true);
+
+      try {
+        const res = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message })
+        });
+        const data = await res.json();
+
+        if (data.error) { showError(data.error); return; }
+
+        showResult(data);
+      } catch (e) {
+        showError("Could not connect to the server. Make sure the Flask API is running.");
+      } finally {
+        hide("loader");
+        setLoading(false);
+      }
+    }
+
+    function showResult(data) {
+      const isSpam = data.prediction === "spam";
+      const pct = data.confidence !== null ? Math.round(data.confidence * 100) : null;
+
+      const badge = document.getElementById("resultBadge");
+      const label = document.getElementById("resultLabel");
+      const desc  = document.getElementById("resultDesc");
+      const fill  = document.getElementById("confBarFill");
+      const confPct = document.getElementById("confPct");
+      const box   = document.getElementById("resultBox");
+
+      badge.textContent = isSpam ? "🚨 SPAM" : "✅ LEGITIMATE";
+      badge.className   = "result-badge " + (isSpam ? "badge-spam" : "badge-ham");
+      label.textContent = isSpam ? "This message appears to be spam." : "This message looks legitimate.";
+
+      if (pct !== null) {
+        fill.style.width = pct + "%";
+        fill.className = "conf-bar-fill " + (isSpam ? "fill-spam" : "fill-ham");
+        confPct.textContent = pct + "%";
+        document.querySelector(".confidence-row").style.display = "flex";
+      } else {
+        document.querySelector(".confidence-row").style.display = "none";
+      }
+
+      desc.textContent = isSpam
+        ? "Our model detected patterns commonly associated with unsolicited or fraudulent messages."
+        : "No spam indicators were found. This message appears to be genuine.";
+
+      box.className = "result-box show " + (isSpam ? "result-spam" : "result-ham");
+    }
+
+    function showError(msg) {
+      document.getElementById("errorMsg").textContent = msg;
+      show("errorBox");
+      hide("resultBox");
+    }
+
+    function show(id) { document.getElementById(id).style.display = ""; }
+    function hide(id) { document.getElementById(id).style.display = "none"; }
+    function setLoading(v) {
+      const btn = document.getElementById("checkBtn");
+      btn.disabled = v;
+      btn.querySelector(".btn-text").textContent = v ? "Analyzing…" : "Analyze Message";
+    }
+
+    // Enter key shortcut (Ctrl+Enter)
+    input.addEventListener("keydown", e => {
+      if (e.ctrlKey && e.key === "Enter") analyzeMessage();
+    });
+
+    // init hide
+    hide("resultBox"); hide("errorBox"); hide("loader");
+  </script>
+</body>
+</html>
