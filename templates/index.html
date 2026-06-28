@@ -170,11 +170,13 @@
         : "No spam indicators were found. This message appears to be genuine.";
 
       box.className = "result-box show " + (isSpam ? "result-spam" : "result-ham");
+      box.style.display = "block";
     }
 
     function showError(msg) {
       document.getElementById("errorMsg").textContent = msg;
-      show("errorBox");
+      const eb = document.getElementById("errorBox");
+      eb.style.display = "flex";
       hide("resultBox");
     }
 
